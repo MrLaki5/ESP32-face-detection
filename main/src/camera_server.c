@@ -63,6 +63,30 @@ static esp_err_t init_camera(void) {
     return ESP_OK;
 }
 
+// API handler
+esp_err_t get_index_handler(httpd_req_t* req)
+{
+    /* Send a simple response */
+    const char resp[] = "<html> \
+                            <head> \
+                                <link rel=\"stylesheet\" href=\"https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css\" integrity=\"sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO\" crossorigin=\"anonymous\"> \
+                                <title>ESP32-CAM</title> \
+                            </head> \
+                            <body> \
+                                <div class=\"container\"> \
+                                    <div class=\"row\"> \
+                                        <div class=\"col-lg-8  offset-lg-2\"> \
+                                            <h3 class=\"mt-5\">Live Streaming</h3> \
+                                            <img src=\"/stream\" width=\"100%\"> \
+                                        </div> \
+                                    </div> \
+                                </div> \
+                            </body> \
+                        </html>";
+    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
 // Camera streamer handler
 esp_err_t jpg_stream_httpd_handler(httpd_req_t *req) {
     camera_fb_t* fb = NULL;
@@ -138,9 +162,17 @@ esp_err_t jpg_stream_httpd_handler(httpd_req_t *req) {
 
 // Setup HTTP server
 httpd_uri_t uri_get = {
-    .uri = "/",
+    .uri = "/stream",
     .method = HTTP_GET,
     .handler = jpg_stream_httpd_handler,
+    .user_ctx = NULL
+};
+
+// Setup HTTP server
+httpd_uri_t uri_index_get = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = get_index_handler,
     .user_ctx = NULL
 };
 
@@ -150,7 +182,8 @@ httpd_handle_t setup_server(void) {
 
     // Start the httpd server and register handlers
     if (httpd_start(&stream_httpd , &config) == ESP_OK) {
-        httpd_register_uri_handler(stream_httpd , &uri_get);
+        httpd_register_uri_handler(stream_httpd, &uri_get);
+        httpd_register_uri_handler(stream_httpd, &uri_index_get);
     }
 
     return stream_httpd;
