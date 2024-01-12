@@ -9,9 +9,11 @@
 #include <esp_http_server.h>
 #include <esp_timer.h>
 
+#include "web_pages.h"
 #include "camera_pins.h"
 #include "wifi_connection.h"
 #include "sd_card_reader.h"
+#include "async_request_worker.h"
 
 static const char *TAG = "camera_server";
 
@@ -64,31 +66,31 @@ static esp_err_t init_camera(void) {
 }
 
 // API handler
-esp_err_t get_index_handler(httpd_req_t* req)
-{
+esp_err_t get_index_handler(httpd_req_t* req) {
     /* Send a simple response */
-    const char resp[] = "<html> \
-                            <head> \
-                                <link rel=\"stylesheet\" href=\"https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css\" integrity=\"sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO\" crossorigin=\"anonymous\"> \
-                                <title>ESP32-CAM</title> \
-                            </head> \
-                            <body> \
-                                <div class=\"container\"> \
-                                    <div class=\"row\"> \
-                                        <div class=\"col-lg-8  offset-lg-2\"> \
-                                            <h3 class=\"mt-5\">Live Streaming</h3> \
-                                            <img src=\"/stream\" width=\"100%\"> \
-                                        </div> \
-                                    </div> \
-                                </div> \
-                            </body> \
-                        </html>";
-    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send(req, index_page, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
 // Camera streamer handler
-esp_err_t jpg_stream_httpd_handler(httpd_req_t *req) {
+esp_err_t jpg_stream_httpd_handler(httpd_req_t *req)
+{
+    // This handler is first invoked on the httpd thread.
+    // In order to free the httpd thread to handle other requests,
+    // we must resubmit our request to be handled on an async worker thread.
+    if (is_on_async_worker_thread() == false) {
+
+        // submit
+        if (submit_async_req(req, jpg_stream_httpd_handler) == ESP_OK) {
+            return ESP_OK;
+        } else {
+            httpd_resp_set_status(req, "503 Busy");
+            httpd_resp_sendstr(req, "<div>Camera busy, workers not available.</div>");
+            return ESP_OK;
+        }
+    }
+
+    // Start camera streaming
     camera_fb_t* fb = NULL;
     esp_err_t res = ESP_OK;
     size_t _jpg_buf_len;
@@ -156,8 +158,59 @@ esp_err_t jpg_stream_httpd_handler(httpd_req_t *req) {
         frame_time /= 1000;
     }
 
+    ESP_LOGI(TAG, "Camera streaming stopped");
     last_frame = 0;
     return res;
+}
+
+esp_err_t handle_ws_req(httpd_req_t *req) {
+    if (req->method == HTTP_GET) {
+        ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+        return ESP_OK;
+    }
+    ESP_LOGI(TAG, "Received data from websocket");
+
+    httpd_ws_frame_t ws_pkt;
+    uint8_t *buf = NULL;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+    /* Set max_len = 0 to get the frame len */
+    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
+        return ret;
+    }
+    ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
+    if (ws_pkt.len) {
+        /* ws_pkt.len + 1 is for NULL termination as we are expecting a string */
+        buf = calloc(1, ws_pkt.len + 1);
+        if (buf == NULL) {
+            ESP_LOGE(TAG, "Failed to calloc memory for buf");
+            return ESP_ERR_NO_MEM;
+        }
+        ws_pkt.payload = buf;
+        /* Set max_len = ws_pkt.len to get the frame payload */
+        ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
+            free(buf);
+            return ret;
+        }
+        ESP_LOGI(TAG, "Got packet with message: %s", ws_pkt.payload);
+    }
+    ESP_LOGI(TAG, "Packet type: %d", ws_pkt.type);
+    if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
+        strcmp((char*)ws_pkt.payload,"Trigger async") == 0) {
+        free(buf);
+        return ret;
+    }
+
+    ret = httpd_ws_send_frame(req, &ws_pkt);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+    }
+    free(buf);
+    return ret;
 }
 
 // Setup HTTP server
@@ -166,6 +219,15 @@ httpd_uri_t uri_get = {
     .method = HTTP_GET,
     .handler = jpg_stream_httpd_handler,
     .user_ctx = NULL
+};
+
+// Websocket handler
+httpd_uri_t ws_uri = {
+    .uri = "/ws",
+    .method = HTTP_GET,
+    .handler = handle_ws_req,
+    .user_ctx = NULL,
+    .is_websocket = true
 };
 
 // Setup HTTP server
@@ -184,6 +246,7 @@ httpd_handle_t setup_server(void) {
     if (httpd_start(&stream_httpd , &config) == ESP_OK) {
         httpd_register_uri_handler(stream_httpd, &uri_get);
         httpd_register_uri_handler(stream_httpd, &uri_index_get);
+        httpd_register_uri_handler(stream_httpd, &ws_uri);
     }
 
     return stream_httpd;
@@ -222,6 +285,7 @@ void app_main() {
         }
 
         // Start web server
+        start_async_req_workers();
         setup_server();
         ESP_LOGI(TAG, "ESP32 Web Camera Streaming Server is up and running");
     }
