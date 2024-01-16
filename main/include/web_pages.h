@@ -12,6 +12,7 @@ static const char index_page[] = "<html> \
                                                 <div class=\"col-lg-8  offset-lg-2\"> \
                                                     <h3 class=\"mt-5\">Live Streaming</h3> \
                                                     <img src=\"/stream\" width=\"100%\"> \
+                                                    <div id=\"framerate\">Frame Rate: </div> \
                                                 </div> \
                                             </div> \
                                         </div> \
@@ -28,6 +29,7 @@ static const char index_page[] = "<html> \
                                             } \
                                             function onOpen(event) { \
                                                 console.log('Connection opened'); \
+                                                get_data(); \
                                             } \
                                             function onClose(event) { \
                                                 console.log('Connection closed'); \
@@ -35,9 +37,20 @@ static const char index_page[] = "<html> \
                                             } \
                                             function onMessage(event) { \
                                                 console.log(event.data); \
+                                                var data = JSON.parse(event.data); \
+                                                updateFrameRate(data.ms_time); \
                                             } \
                                             function onLoad(event) { \
                                                 initWebSocket(); \
+                                            } \
+                                            function updateFrameRate(data) { \
+                                                document.getElementById('framerate').innerHTML = 'Frame Rate: ' + (1000 / data).toFixed(1) + ' fps'; \
+                                            } \
+                                            function get_data() { \
+                                                if (websocket && websocket.readyState === WebSocket.OPEN) { \
+                                                    websocket.send('get_framerate'); \
+                                                    setTimeout(get_data, 10000); \
+                                                } \
                                             } \
                                         </script> \
                                     </body> \

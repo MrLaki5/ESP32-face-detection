@@ -16,6 +16,7 @@
 #include "async_request_worker.h"
 
 static const char *TAG = "camera_server";
+static int64_t frame_time_ms = 0;
 
 // Web stream metadata
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -70,6 +71,19 @@ esp_err_t get_index_handler(httpd_req_t* req) {
     /* Send a simple response */
     httpd_resp_send(req, index_page, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
+}
+
+// Send data to websocket
+void ws_send_data(httpd_req_t* req, char* msg, int len) {
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+    ws_pkt.len = len;
+    ws_pkt.payload = (uint8_t*)msg;
+    esp_err_t ret = httpd_ws_send_frame(req, &ws_pkt);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+    }
 }
 
 // Camera streamer handler
@@ -153,13 +167,13 @@ esp_err_t jpg_stream_httpd_handler(httpd_req_t *req)
 
         // Calculate frame rate
         int64_t fr_end = esp_timer_get_time();
-        int64_t frame_time = fr_end - last_frame;
+        frame_time_ms = (fr_end - last_frame) / 1000;
         last_frame = fr_end;
-        frame_time /= 1000;
     }
 
     ESP_LOGI(TAG, "Camera streaming stopped");
     last_frame = 0;
+    frame_time_ms = 0;
     return res;
 }
 
@@ -205,10 +219,14 @@ esp_err_t handle_ws_req(httpd_req_t *req) {
         return ret;
     }
 
-    ret = httpd_ws_send_frame(req, &ws_pkt);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-    }
+    // Send framerate to websocket
+    char msg[64];
+    sprintf(msg, "{\"ms_time\": %lld}", frame_time_ms);
+    ws_send_data(req, msg, strlen(msg));
+    // ret = httpd_ws_send_frame(req, &ws_pkt);
+    // if (ret != ESP_OK) {
+    //     ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+    // }
     free(buf);
     return ret;
 }
