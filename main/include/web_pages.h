@@ -13,6 +13,9 @@ static const char index_page[] = "<html> \
                                                     <h3 class=\"mt-5\">Live Streaming</h3> \
                                                     <img src=\"/stream\" width=\"100%\"> \
                                                     <div id=\"framerate\">Frame Rate: </div> \
+                                                    <div id=\"flash\">Flash: </div> \
+                                                    <br> \
+                                                    <button type=\"button\" class=\"btn btn-primary btn-lg btn-block\" onclick=\"flip_flash()\">Flash</button> \
                                                 </div> \
                                             </div> \
                                         </div> \
@@ -39,6 +42,7 @@ static const char index_page[] = "<html> \
                                                 console.log(event.data); \
                                                 var data = JSON.parse(event.data); \
                                                 updateFrameRate(data.ms_time); \
+                                                updateFlash(data.led); \
                                             } \
                                             function onLoad(event) { \
                                                 initWebSocket(); \
@@ -46,10 +50,18 @@ static const char index_page[] = "<html> \
                                             function updateFrameRate(data) { \
                                                 document.getElementById('framerate').innerHTML = 'Frame Rate: ' + (1000 / data).toFixed(1) + ' fps'; \
                                             } \
+                                            function updateFlash(data) { \
+                                                document.getElementById('flash').innerHTML = 'Flash: ' + data; \
+                                            } \
                                             function get_data() { \
                                                 if (websocket && websocket.readyState === WebSocket.OPEN) { \
                                                     websocket.send('get_framerate'); \
                                                     setTimeout(get_data, 10000); \
+                                                } \
+                                            } \
+                                            function flip_flash() { \
+                                                if (websocket && websocket.readyState === WebSocket.OPEN) { \
+                                                    websocket.send('flip_flash'); \
                                                 } \
                                             } \
                                         </script> \

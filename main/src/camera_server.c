@@ -8,12 +8,16 @@
 #include <esp_camera.h>
 #include <esp_http_server.h>
 #include <esp_timer.h>
+#include <driver/gpio.h>
 
 #include "web_pages.h"
 #include "camera_pins.h"
 #include "wifi_connection.h"
 #include "sd_card_reader.h"
 #include "async_request_worker.h"
+
+#define LED_GPIO_PIN 4 // GPIO 4 for the onboard LED
+static int led_status = 0;
 
 static const char *TAG = "camera_server";
 static int64_t frame_time_ms = 0;
@@ -64,6 +68,24 @@ static esp_err_t init_camera(void) {
     }
 
     return ESP_OK;
+}
+
+// Initialize GPIO pins
+esp_err_t init_pins(void) {
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_INPUT_OUTPUT;
+    io_conf.pin_bit_mask = 1ULL << LED_GPIO_PIN;
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    return gpio_config(&io_conf);
+}
+
+
+// Flip on/off LED
+void flip_led(void) {
+    led_status = !led_status;
+    gpio_set_level(LED_GPIO_PIN, led_status);
 }
 
 // API handler
@@ -214,19 +236,14 @@ esp_err_t handle_ws_req(httpd_req_t *req) {
     }
     ESP_LOGI(TAG, "Packet type: %d", ws_pkt.type);
     if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
-        strcmp((char*)ws_pkt.payload,"Trigger async") == 0) {
-        free(buf);
-        return ret;
+        strcmp((char*)ws_pkt.payload,"flip_flash") == 0) {
+        flip_led();
     }
 
     // Send framerate to websocket
     char msg[64];
-    sprintf(msg, "{\"ms_time\": %lld}", frame_time_ms);
+    sprintf(msg, "{\"ms_time\": %lld, \"led\": %d}", frame_time_ms, led_status);
     ws_send_data(req, msg, strlen(msg));
-    // ret = httpd_ws_send_frame(req, &ws_pkt);
-    // if (ret != ESP_OK) {
-    //     ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-    // }
     free(buf);
     return ret;
 }
@@ -301,6 +318,15 @@ void app_main() {
             ESP_LOGE(TAG, "Failed to init camera: %s", esp_err_to_name(err));
             return;
         }
+
+        // Initialize pins
+        err = init_pins();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to init pins: %s", esp_err_to_name(err));
+            return;
+        }
+        // Set LED pin to low, disabled
+        gpio_set_level(LED_GPIO_PIN, led_status);
 
         // Start web server
         start_async_req_workers();
