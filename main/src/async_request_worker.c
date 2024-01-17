@@ -3,7 +3,7 @@
 #include <esp_log.h>
 
 #define ASYNC_WORKER_TASK_STACK_SIZE 4096
-#define ASYNC_WORKER_TASK_PRIORITY 5
+#define ASYNC_WORKER_TASK_PRIORITY configMAX_PRIORITIES - 1
 #define MAX_ASYNC_REQUESTS 1
 
 static const char *TAG = "async_request_worker";
