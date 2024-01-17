@@ -1,6 +1,8 @@
 #ifndef CAMERA_PINS_H_
 #define CAMERA_PINS_H_
 
+#include <esp_camera.h>
+
 // Freenove ESP32-WROVER CAM Board PIN Map
 #if BOARD_WROVER_KIT
 #define CAM_PIN_PWDN -1
@@ -80,5 +82,37 @@
 #define HREF_GPIO_NUM     26
 #define PCLK_GPIO_NUM     21
 #endif
+
+void get_camera_current_resolution(framesize_t size, int* w, int* h) {
+    if (!w || !h) {
+        return; // Safety check for null pointers
+    }
+
+    switch(size) {
+        case FRAMESIZE_96X96:    *w = 96; *h = 96; break;
+        case FRAMESIZE_QQVGA:    *w = 160; *h = 120; break;
+        case FRAMESIZE_QCIF:     *w = 176; *h = 144; break;
+        case FRAMESIZE_HQVGA:    *w = 240; *h = 176; break;
+        case FRAMESIZE_240X240:  *w = 240; *h = 240; break;
+        case FRAMESIZE_QVGA:     *w = 320; *h = 240; break;
+        case FRAMESIZE_CIF:      *w = 400; *h = 296; break;
+        case FRAMESIZE_HVGA:     *w = 480; *h = 320; break;
+        case FRAMESIZE_VGA:      *w = 640; *h = 480; break;
+        case FRAMESIZE_SVGA:     *w = 800; *h = 600; break;
+        case FRAMESIZE_XGA:      *w = 1024; *h = 768; break;
+        case FRAMESIZE_HD:       *w = 1280; *h = 720; break;
+        case FRAMESIZE_SXGA:     *w = 1280; *h = 1024; break;
+        case FRAMESIZE_UXGA:     *w = 1600; *h = 1200; break;
+        case FRAMESIZE_FHD:      *w = 1920; *h = 1080; break;
+        case FRAMESIZE_P_HD:     *w = 720; *h = 1280; break;
+        case FRAMESIZE_P_3MP:    *w = 864; *h = 1536; break;
+        case FRAMESIZE_QXGA:     *w = 2048; *h = 1536; break;
+        case FRAMESIZE_QHD:      *w = 2560; *h = 1440; break;
+        case FRAMESIZE_WQXGA:    *w = 2560; *h = 1600; break;
+        case FRAMESIZE_P_FHD:    *w = 1080; *h = 1920; break;
+        case FRAMESIZE_QSXGA:    *w = 2560; *h = 1920; break;
+        default:                 *w = 0; *h = 0; // Invalid Size
+    }
+}
 
 #endif

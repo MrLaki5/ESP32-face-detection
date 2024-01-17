@@ -13,6 +13,7 @@ static const char index_page[] = "<html> \
                                                     <h3 class=\"mt-5\">Live Streaming</h3> \
                                                     <img src=\"/stream\" width=\"100%\"> \
                                                     <div id=\"framerate\">Frame Rate: </div> \
+                                                    <div id=\"resolution\">Resolution: </div> \
                                                     <div id=\"flash\">Flash: </div> \
                                                     <br> \
                                                     <button type=\"button\" class=\"btn btn-primary btn-lg btn-block\" onclick=\"flip_flash()\">Flash</button> \
@@ -43,6 +44,7 @@ static const char index_page[] = "<html> \
                                                 var data = JSON.parse(event.data); \
                                                 updateFrameRate(data.ms_time); \
                                                 updateFlash(data.led); \
+                                                updateResolution(data.resolution); \
                                             } \
                                             function onLoad(event) { \
                                                 initWebSocket(); \
@@ -52,6 +54,9 @@ static const char index_page[] = "<html> \
                                             } \
                                             function updateFlash(data) { \
                                                 document.getElementById('flash').innerHTML = 'Flash: ' + data; \
+                                            } \
+                                            function updateResolution(data) { \
+                                                document.getElementById('resolution').innerHTML = 'Resolution: ' + data; \
                                             } \
                                             function get_data() { \
                                                 if (websocket && websocket.readyState === WebSocket.OPEN) { \

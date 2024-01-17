@@ -5,7 +5,6 @@
 // #define BOARD_CAMERA_MODEL_TTGO_T_JOURNAL 1
 
 #include <nvs_flash.h>
-#include <esp_camera.h>
 #include <esp_http_server.h>
 #include <esp_timer.h>
 #include <driver/gpio.h>
@@ -21,6 +20,8 @@ static int led_status = 0;
 
 static const char *TAG = "camera_server";
 static int64_t frame_time_ms = 0;
+static int camera_w = 0;
+static int camera_h = 0;
 
 // Web stream metadata
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -53,7 +54,7 @@ static esp_err_t init_camera(void) {
         .ledc_channel = LEDC_CHANNEL_0,
 
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_VGA,
+        .frame_size = FRAMESIZE_QVGA,
 
         .jpeg_quality = 10,
         .fb_count = 1,
@@ -62,6 +63,15 @@ static esp_err_t init_camera(void) {
     };
     
     esp_err_t err = esp_camera_init(&camera_config);
+
+    // Get current camera resolution
+    sensor_t *s = esp_camera_sensor_get();
+    if (s == NULL) {
+        ESP_LOGE(TAG, "Camera sensor not found");
+        return ESP_FAIL;
+    }
+    get_camera_current_resolution(s->status.framesize, &camera_w, &camera_h);
+    ESP_LOGI(TAG, "Current resolution: %dx%d", camera_w, camera_h);
     
     if (err != ESP_OK) {
         return err;
@@ -242,7 +252,8 @@ esp_err_t handle_ws_req(httpd_req_t *req) {
 
     // Send framerate to websocket
     char msg[64];
-    sprintf(msg, "{\"ms_time\": %lld, \"led\": %d}", frame_time_ms, led_status);
+    sprintf(msg, "{\"ms_time\": %lld, \"led\": %d, \"resolution\": \"%dx%d\"}", 
+            frame_time_ms, led_status, camera_w, camera_h);
     ws_send_data(req, msg, strlen(msg));
     free(buf);
     return ret;
