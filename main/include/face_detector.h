@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 
-void inference_face_detection(uint8_t *image_data, int width, int height, int channels);
+void inference_face_detection(uint16_t *image_data, int width, int height, int channels);
 
 #ifdef __cplusplus
 }

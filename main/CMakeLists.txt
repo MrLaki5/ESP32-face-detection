@@ -5,4 +5,4 @@ set(sources "src/camera_server.c"
             "src/face_detector.cpp")
 
 idf_component_register(SRCS ${sources}
-                    INCLUDE_DIRS "include")
+                       INCLUDE_DIRS "include")

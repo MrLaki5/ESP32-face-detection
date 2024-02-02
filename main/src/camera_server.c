@@ -14,6 +14,8 @@
 #include "wifi_connection.h"
 #include "sd_card_reader.h"
 #include "async_request_worker.h"
+#include <esp_log.h>
+#include <stddef.h>
 #include "face_detector.h"
 
 #define LED_GPIO_PIN 4 // GPIO 4 for the onboard LED
@@ -23,8 +25,6 @@ static const char *TAG = "camera_server";
 static int64_t frame_time_ms = 0;
 static int camera_w = 0;
 static int camera_h = 0;
-static uint8_t* camera_buf_rgb888 = NULL;
-// static uint8_t camera_buf_rgb888[160 * 120 * 3];
 
 // Web stream metadata
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -52,16 +52,16 @@ static esp_err_t init_camera(void) {
         .pin_href = CAM_PIN_HREF,
         .pin_pclk = CAM_PIN_PCLK,
 
-        .xclk_freq_hz = 20000000,
+        .xclk_freq_hz = 10000000,
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
 
-        .pixel_format = PIXFORMAT_JPEG,
+        .pixel_format = PIXFORMAT_RGB565,
         .frame_size = FRAMESIZE_QVGA,
 
-        .jpeg_quality = 10,
-        .fb_count = 1,
-        .fb_location = CAMERA_FB_IN_DRAM,
+        .jpeg_quality = 12,
+        .fb_count = 2,
+        .fb_location = CAMERA_FB_IN_PSRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY
     };
     
@@ -78,13 +78,6 @@ static esp_err_t init_camera(void) {
     }
     get_camera_current_resolution(s->status.framesize, &camera_w, &camera_h);
     ESP_LOGI(TAG, "Current resolution: %dx%d", camera_w, camera_h);
-    int64_t buf_size = (int64_t)camera_w * camera_h * 3 * sizeof(uint8_t);
-    ESP_LOGI(TAG, "Allocating %lld bytes for RGB888 buffer", buf_size);
-    camera_buf_rgb888 = (uint8_t*)malloc(buf_size);
-    if (camera_buf_rgb888 == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for RGB888 buffer");
-        return ESP_FAIL;
-    }
 
     return ESP_OK;
 }
@@ -170,16 +163,8 @@ esp_err_t jpg_stream_httpd_handler(httpd_req_t *req)
             break;
         }
 
-        // Convert to RGB888
-        if (!fmt2rgb888(fb->buf, fb->len, fb->format, camera_buf_rgb888)) {
-            ESP_LOGE(TAG, "Failed to convert to RGB888");
-            esp_camera_fb_return(fb);
-            break;
-        }
-
-        ESP_LOGE(TAG, "Inference starting");
-        inference_face_detection(camera_buf_rgb888, camera_w, camera_h, 3);
-        ESP_LOGE(TAG, "Inference done");
+        // Run inference
+        inference_face_detection((uint16_t*)fb->buf, (int)fb->width, (int)fb->height, 3);
 
         // Convert to jpeg if needed
         if(fb->format != PIXFORMAT_JPEG) {
@@ -367,9 +352,4 @@ void app_main() {
     else {
         ESP_LOGI(TAG, "Failed to connected to Wifi, check your network credentials");
     }
-
-    // free(warmup_buff);
-    // ESP_LOGE(TAG, "Inference starting");
-    // inference_face_detection(camera_buf_rgb888, 160, 120, 3);
-    // ESP_LOGE(TAG, "Inference done");
 }
