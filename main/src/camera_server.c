@@ -14,9 +14,13 @@
 #include "wifi_connection.h"
 #include "sd_card_reader.h"
 #include "async_request_worker.h"
+#include <esp_log.h>
+#include <stddef.h>
+#include "face_detector.h"
 
 #define LED_GPIO_PIN 4 // GPIO 4 for the onboard LED
 static int led_status = 0;
+static int face_det_status = 0;
 
 static const char *TAG = "camera_server";
 static int64_t frame_time_ms = 0;
@@ -49,20 +53,23 @@ static esp_err_t init_camera(void) {
         .pin_href = CAM_PIN_HREF,
         .pin_pclk = CAM_PIN_PCLK,
 
-        .xclk_freq_hz = 20000000,
+        .xclk_freq_hz = 10000000,
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
 
-        .pixel_format = PIXFORMAT_JPEG,
+        .pixel_format = PIXFORMAT_RGB565,
         .frame_size = FRAMESIZE_QVGA,
 
-        .jpeg_quality = 10,
-        .fb_count = 1,
-        .fb_location = CAMERA_FB_IN_DRAM,
+        .jpeg_quality = 12,
+        .fb_count = 2,
+        .fb_location = CAMERA_FB_IN_PSRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY
     };
     
     esp_err_t err = esp_camera_init(&camera_config);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     // Get current camera resolution
     sensor_t *s = esp_camera_sensor_get();
@@ -72,10 +79,6 @@ static esp_err_t init_camera(void) {
     }
     get_camera_current_resolution(s->status.framesize, &camera_w, &camera_h);
     ESP_LOGI(TAG, "Current resolution: %dx%d", camera_w, camera_h);
-    
-    if (err != ESP_OK) {
-        return err;
-    }
 
     return ESP_OK;
 }
@@ -96,6 +99,11 @@ esp_err_t init_pins(void) {
 void flip_led(void) {
     led_status = !led_status;
     gpio_set_level(LED_GPIO_PIN, led_status);
+}
+
+// Flip on/off face detection
+void flip_face_detection(void) {
+    face_det_status = !face_det_status;
 }
 
 // API handler
@@ -159,6 +167,11 @@ esp_err_t jpg_stream_httpd_handler(httpd_req_t *req)
             ESP_LOGE(TAG, "Camera capture failed");
             res = ESP_FAIL;
             break;
+        }
+
+        // Run inference
+        if (face_det_status) {
+            inference_face_detection((uint16_t*)fb->buf, (int)fb->width, (int)fb->height, 3);
         }
 
         // Convert to jpeg if needed
@@ -249,11 +262,15 @@ esp_err_t handle_ws_req(httpd_req_t *req) {
         strcmp((char*)ws_pkt.payload,"flip_flash") == 0) {
         flip_led();
     }
+    else if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
+        strcmp((char*)ws_pkt.payload,"flip_face_det") == 0) {
+        flip_face_detection();
+    }
 
     // Send framerate to websocket
-    char msg[64];
-    sprintf(msg, "{\"ms_time\": %lld, \"led\": %d, \"resolution\": \"%dx%d\"}", 
-            frame_time_ms, led_status, camera_w, camera_h);
+    char msg[120];
+    sprintf(msg, "{\"ms_time\": %lld, \"led\": %d, \"resolution\": \"%dx%d\", \"face_det\": %d}", 
+            frame_time_ms, led_status, camera_w, camera_h, face_det_status);
     ws_send_data(req, msg, strlen(msg));
     free(buf);
     return ret;
