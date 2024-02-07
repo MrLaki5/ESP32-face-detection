@@ -20,6 +20,7 @@
 
 #define LED_GPIO_PIN 4 // GPIO 4 for the onboard LED
 static int led_status = 0;
+static int face_det_status = 0;
 
 static const char *TAG = "camera_server";
 static int64_t frame_time_ms = 0;
@@ -100,6 +101,11 @@ void flip_led(void) {
     gpio_set_level(LED_GPIO_PIN, led_status);
 }
 
+// Flip on/off face detection
+void flip_face_detection(void) {
+    face_det_status = !face_det_status;
+}
+
 // API handler
 esp_err_t get_index_handler(httpd_req_t* req) {
     /* Send a simple response */
@@ -164,7 +170,9 @@ esp_err_t jpg_stream_httpd_handler(httpd_req_t *req)
         }
 
         // Run inference
-        inference_face_detection((uint16_t*)fb->buf, (int)fb->width, (int)fb->height, 3);
+        if (face_det_status) {
+            inference_face_detection((uint16_t*)fb->buf, (int)fb->width, (int)fb->height, 3);
+        }
 
         // Convert to jpeg if needed
         if(fb->format != PIXFORMAT_JPEG) {
@@ -254,11 +262,15 @@ esp_err_t handle_ws_req(httpd_req_t *req) {
         strcmp((char*)ws_pkt.payload,"flip_flash") == 0) {
         flip_led();
     }
+    else if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
+        strcmp((char*)ws_pkt.payload,"flip_face_det") == 0) {
+        flip_face_detection();
+    }
 
     // Send framerate to websocket
-    char msg[64];
-    sprintf(msg, "{\"ms_time\": %lld, \"led\": %d, \"resolution\": \"%dx%d\"}", 
-            frame_time_ms, led_status, camera_w, camera_h);
+    char msg[120];
+    sprintf(msg, "{\"ms_time\": %lld, \"led\": %d, \"resolution\": \"%dx%d\", \"face_det\": %d}", 
+            frame_time_ms, led_status, camera_w, camera_h, face_det_status);
     ws_send_data(req, msg, strlen(msg));
     free(buf);
     return ret;

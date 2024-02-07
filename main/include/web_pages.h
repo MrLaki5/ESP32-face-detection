@@ -15,8 +15,10 @@ static const char index_page[] = "<html> \
                                                     <div id=\"framerate\">Frame Rate: </div> \
                                                     <div id=\"resolution\">Resolution: </div> \
                                                     <div id=\"flash\">Flash: </div> \
+                                                    <div id=\"face_detection\">Face Detection: </div> \
                                                     <br> \
                                                     <button type=\"button\" class=\"btn btn-primary btn-lg btn-block\" onclick=\"flip_flash()\">Flash</button> \
+                                                    <button type=\"button\" class=\"btn btn-primary btn-lg btn-block\" onclick=\"flipt_face_detection()\">Face Detection</button> \
                                                 </div> \
                                             </div> \
                                         </div> \
@@ -45,6 +47,7 @@ static const char index_page[] = "<html> \
                                                 updateFrameRate(data.ms_time); \
                                                 updateFlash(data.led); \
                                                 updateResolution(data.resolution); \
+                                                updateFaceDetection(data.face_det); \
                                             } \
                                             function onLoad(event) { \
                                                 initWebSocket(); \
@@ -58,6 +61,9 @@ static const char index_page[] = "<html> \
                                             function updateResolution(data) { \
                                                 document.getElementById('resolution').innerHTML = 'Resolution: ' + data; \
                                             } \
+                                            function updateFaceDetection(data) { \
+                                                document.getElementById('face_detection').innerHTML = 'Face Detection: ' + data; \
+                                            } \
                                             function get_data() { \
                                                 if (websocket && websocket.readyState === WebSocket.OPEN) { \
                                                     websocket.send('get_framerate'); \
@@ -67,6 +73,11 @@ static const char index_page[] = "<html> \
                                             function flip_flash() { \
                                                 if (websocket && websocket.readyState === WebSocket.OPEN) { \
                                                     websocket.send('flip_flash'); \
+                                                } \
+                                            } \
+                                            function flipt_face_detection() { \
+                                                if (websocket && websocket.readyState === WebSocket.OPEN) { \
+                                                    websocket.send('flip_face_det'); \
                                                 } \
                                             } \
                                         </script> \
